@@ -356,53 +356,38 @@ const crew = (function () {
         }
 
         let p0 = s0, p1 = s1;
-        const latency = matey.latency ?? 0;
-        const ticks = Math.round(latency / TICKSIZE) + 1;
-        if (p1) {
-          p1 = soothsayer.predict(p1, latency, ticks);
-        }
-        if (p0) {
-          p0 = soothsayer.predict(p0, latency, ticks);
-        }
-
         let a = (now - p0.when)/TICKSIZE;
-        if (!p1 || a >= 1) {
-          // Either no previous snapshot or latest is already old
-
-          // If velocity is below MIN_SPEED, server rounds it to zero and
-          // stops sending updates. Avoid drifting at this last seen speed.
-          const vx = Math.abs(p0.vx) > MIN_SPEED ? p0.vx : 0;
-          const vy = Math.abs(p0.vy) > MIN_SPEED ? p0.vy : 0;
-
-          me.corrected = {
-            x: mod(p0.x + vx*(a-1), 2000),
-            y: mod(p0.y + vy*(a-1), 2000),
-            vx: vx,
-            vy: vy,
-            when: now,
-          };
+        const latency = matey.latency ?? 0;
+        const ticks = Math.round(latency / TICKSIZE) + Math.floor(a) + 1;
+        if (p1 && a < 1) {
+          p1 = soothsayer.predict(p1, latency, ticks);
         } else {
-          // Blend with previous snapshot
-          if (p1.x - p0.x > 1000) {
-            p1.x -= 2000;
-          } else if (p1.x - p0.x < -1000) {
-            p1.x += 2000;
-          }
-
-          if (p1.y - p0.y > 1000) {
-            p1.y -= 2000;
-          } else if (p1.x - p0.x < -1000) {
-            p1.y += 2000;
-          }
-
-          me.corrected = {
-            x: mod(a*p0.x + (1-a)*p1.x, 2000),
-            y: mod(a*p0.y + (1-a)*p1.y, 2000),
-            vx: a*p0.vx + (1-a)*p1.vx,
-            vy: a*p0.vy + (1-a)*p1.vy,
-            when: now,
-          };
+          // Either no previous snapshot or latest is already old
+          p1 = soothsayer.predict(p0, latency, ticks-1);
+          a %= 1;
         }
+        p0 = soothsayer.predict(p0, latency, ticks);
+
+        // Blend with previous snapshot
+        if (p1.x - p0.x > 1000) {
+          p1.x -= 2000;
+        } else if (p1.x - p0.x < -1000) {
+          p1.x += 2000;
+        }
+
+        if (p1.y - p0.y > 1000) {
+          p1.y -= 2000;
+        } else if (p1.x - p0.x < -1000) {
+          p1.y += 2000;
+        }
+
+        me.corrected = {
+          x: mod(a*p0.x + (1-a)*p1.x, 2000),
+          y: mod(a*p0.y + (1-a)*p1.y, 2000),
+          vx: a*p0.vx + (1-a)*p1.vx,
+          vy: a*p0.vy + (1-a)*p1.vy,
+          when: now,
+        };
       },
 
       handleUpdate(event) {
