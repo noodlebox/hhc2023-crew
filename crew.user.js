@@ -21,6 +21,8 @@ const crew = (function () {
   const TICKSIZE = 33;
   // Speed limit on either axis in units/tick
   const MAX_SPEED = 0.65;
+  // Minimum measurable speed in units/tick (values below this round to zero)
+  const MIN_SPEED = 0.001;
   // Acceleration for movement keys in units/tick/tick
   const ACCEL = 0.025;
   // Velocity factor per tick when no movement keys are active on an axis
@@ -208,6 +210,14 @@ const crew = (function () {
         const { x, y, vx, vy, when } = snapshot;
         const predicted = { x: +x, y: +y, vx: +vx, vy: +vy, when };
         for (const input of this.merge(when-latency, ticks)) {
+          // Round any velocity below threshold to zero
+          if (Math.abs(predicted.vx) < MIN_SPEED) {
+            predicted.vx = 0;
+          }
+          if (Math.abs(predicted.vy) < MIN_SPEED) {
+            predicted.vy = 0;
+          }
+
           // Integrate velocity
           predicted.x += predicted.vx;
           predicted.y += predicted.vy;
@@ -358,11 +368,17 @@ const crew = (function () {
         let a = (now - p0.when)/TICKSIZE;
         if (!p1 || a >= 1) {
           // Either no previous snapshot or latest is already old
+
+          // If velocity is below MIN_SPEED, server rounds it to zero and
+          // stops sending updates. Avoid drifting at this last seen speed.
+          const vx = Math.abs(p0.vx) > MIN_SPEED ? p0.vx : 0;
+          const vy = Math.abs(p0.vy) > MIN_SPEED ? p0.vy : 0;
+
           me.corrected = {
-            x: mod(p0.x + p0.vx*(a-1), 2000),
-            y: mod(p0.y + p0.vy*(a-1), 2000),
-            vx: p0.vx,
-            vy: p0.vy,
+            x: mod(p0.x + vx*(a-1), 2000),
+            y: mod(p0.y + vy*(a-1), 2000),
+            vx: vx,
+            vy: vy,
             when: now,
           };
         } else {
