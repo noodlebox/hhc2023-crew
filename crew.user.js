@@ -1202,21 +1202,17 @@ const crew = (function () {
       ctx.save();
       camera.transform();
 
-      const depthMap = [
-        ...Object.keys(Entities).map(id => ([ (Entities[id].corrected ?? Entities[id]).y, id ])),
-      ];
-
-      depthMap.sort(([a], [b]) => a > b ? 1 : -1);
-
       // Draw entities
-      depthMap.forEach(([y, itemId]) => {
+      Object.entries(Entities).map(
+        ([ id, e ]) => [ id, e, near(e.corrected ?? e, camera) ]
+      ).sort(
+        (a, b) => (a[2].y-b[2].y)
+      ).forEach(([itemId, item, pos]) => {
         /* globals renderTerrainLayer */
         if (itemId.substr(0, 2) === 't:') {
           renderTerrainLayer(parseInt(itemId.substr(2), 10));
           return;
         }
-
-        const item = Entities[itemId];
 
         if (item.dob && item.lifespan) {
           item.age = Date.now() - item.dob;
@@ -1226,7 +1222,7 @@ const crew = (function () {
           }
         }
 
-        const pos = item.corrected ?? item;
+        pos = canonicalize(pos);
         const { x:ix, y:iy } = pos;
         camera.inFrame(pos).forEach(({x, y}) => {
           ctx.save();
