@@ -32,6 +32,40 @@ const crew = (function () {
   // Velocity factor per tick when anchor is active
   const DRAG_ANCHOR = 0.20;
 
+  /*
+  // Ensures that the position of `p` is within [0, WORLD_SIZE).
+  const canonicalize = p => {
+    p.x = mod(p.x, WORLD_SIZE);
+    p.y = mod(p.y, WORLD_SIZE);
+    return p;
+  };
+  */
+
+  // Ensures that the position of `p` is within [0, WORLD_SIZE), or within
+  // WORLD_SIZE/2 units of `ref` if given.
+  const canonicalize = (p, ref={ x: WORLD_SIZE/2, y: WORLD_SIZE/2 }) => {
+    while (p.x - ref.x > WORLD_SIZE/2) {
+      p.x -= WORLD_SIZE;
+    }
+    while (p.x - ref.x < -WORLD_SIZE/2) {
+      p.x += WORLD_SIZE;
+    }
+
+    while (p.y - ref.y > WORLD_SIZE/2) {
+      p.y -= WORLD_SIZE;
+    }
+    while (p.x - ref.x < -WORLD_SIZE/2) {
+      p.y += WORLD_SIZE;
+    }
+    return p;
+  };
+
+  // Returns an equivalent position near (within WORLD_SIZE/2 units of) `ref`.
+  // This may return a non-canonical position (in a "parallel universe") for
+  // ease of use relative to `ref`, such as in path-finding or rendering.
+  // If `ref` is not given, returns canonicalized position.
+  const near = ({ x, y, vx, vy }, ref) => canonicalize({ x, y, vx, vy }, ref);
+
   const norm = v => {
     // Normalize to top speed
     const { x, y } = v;
@@ -59,6 +93,7 @@ const crew = (function () {
   // Given two point-like objects, a and b, the distance between them.
   // NOTE: Thrust axes are independent, so we use Chebyshev distance.
   const dist = (a, b) => {
+    b = near(b, a);
     return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   };
 
@@ -281,9 +316,7 @@ const crew = (function () {
           }
         }
 
-        predicted.x = mod(predicted.x, WORLD_SIZE);
-        predicted.y = mod(predicted.y, WORLD_SIZE);
-        return predicted;
+        return canonicalize(predicted);
       },
 
       start() {
@@ -371,28 +404,16 @@ const crew = (function () {
           p1 = soothsayer.predict(p0, latency, ticks-1);
           a %= 1;
         }
-        p0 = soothsayer.predict(p0, latency, ticks);
+        p0 = near(soothsayer.predict(p0, latency, ticks), p1);
 
         // Blend with previous snapshot
-        if (p1.x - p0.x > WORLD_SIZE/2) {
-          p1.x -= WORLD_SIZE;
-        } else if (p1.x - p0.x < -WORLD_SIZE/2) {
-          p1.x += WORLD_SIZE;
-        }
-
-        if (p1.y - p0.y > WORLD_SIZE/2) {
-          p1.y -= WORLD_SIZE;
-        } else if (p1.x - p0.x < -WORLD_SIZE/2) {
-          p1.y += WORLD_SIZE;
-        }
-
-        me.corrected = {
-          x: mod(a*p0.x + (1-a)*p1.x, WORLD_SIZE),
-          y: mod(a*p0.y + (1-a)*p1.y, WORLD_SIZE),
+        me.corrected = canonicalize({
+          x: a*p0.x + (1-a)*p1.x,
+          y: a*p0.y + (1-a)*p1.y,
           vx: a*p0.vx + (1-a)*p1.vx,
           vy: a*p0.vy + (1-a)*p1.vy,
           when: now,
-        };
+        });
       },
 
       handleUpdate(event) {
@@ -639,21 +660,14 @@ const crew = (function () {
 
         const a = 1 - Math.exp(-dt/this.t);
 
-        let { x:cx, y:cy, z:cz, tx, ty, tz } = this;
-        if (tx - cx > WORLD_SIZE/2) {
-          tx -= WORLD_SIZE;
-        } else if (tx - cx < -WORLD_SIZE/2) {
-          tx += WORLD_SIZE;
-        }
-        if (ty - cy > WORLD_SIZE/2) {
-          ty -= WORLD_SIZE;
-        } else if (ty - cy < -WORLD_SIZE/2) {
-          ty += WORLD_SIZE;
-        }
+        const { x:tx, y:ty } = near({ x: this.tx, y: this.ty }, this);
+        const { tz, x:cx, y:cy, z:cz } = this;
 
-        this.cx = mod(a*tx + (1-a)*cx, WORLD_SIZE);
-        this.cy = mod(a*ty + (1-a)*cy, WORLD_SIZE);
-        this.cz = a*tz + (1-a)*cz;
+        ({ x:this.cx, y:this.cy, z:this.cz } = canonicalize({
+          x: a*tx + (1-a)*cx,
+          y: a*ty + (1-a)*cy,
+          z: a*tz + (1-a)*cz,
+        }));
         this._boundsDirty = true;
       },
 
@@ -774,6 +788,7 @@ const crew = (function () {
 
       inFrame(p) {
         if (!this.valid) { return []; }
+        p = near(p);
 
         return this.bounds.filter(
           ({x0, y0, x1, y1})=>(p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1)
@@ -1097,20 +1112,8 @@ const crew = (function () {
         ctx.save();
         ctx.translate(x, y);
         let x0, x1, x2, v0, v1;
-        x1 = start;
-        x2 = wps[offset];
-
-        if (x2.x - x1.x > WORLD_SIZE/2) {
-          x2.x -= WORLD_SIZE;
-        } else if (x2.x - x1.x < -WORLD_SIZE/2) {
-          x2.x += WORLD_SIZE;
-        }
-
-        if (x2.y - x1.y > WORLD_SIZE/2) {
-          x2.y -= WORLD_SIZE;
-        } else if (x2.x - x1.x < -WORLD_SIZE/2) {
-          x2.y += WORLD_SIZE;
-        }
+        x1 = near(start);
+        x2 = near(wps[offset], x1);
 
         v1 = norm({
           x: x1.vx ?? 0,
@@ -1120,20 +1123,8 @@ const crew = (function () {
         for (let i = 0; i < n && i+offset < wps.length; i++) {
           x0 = x1;
           x1 = x2;
-          x2 = wps[i+offset+1] ?? { x: 2*x1.x-x0.x, y: 2*x1.y-x0.y };
+          x2 = near(wps[i+offset+1] ?? { x: 2*x1.x-x0.x, y: 2*x1.y-x0.y }, x1);
           v0 = v1;
-
-          if (x2.x - x1.x > WORLD_SIZE/2) {
-            x2.x -= WORLD_SIZE;
-          } else if (x2.x - x1.x < -WORLD_SIZE/2) {
-            x2.x += WORLD_SIZE;
-          }
-
-          if (x2.y - x1.y > WORLD_SIZE/2) {
-            x2.y -= WORLD_SIZE;
-          } else if (x2.x - x1.x < -WORLD_SIZE/2) {
-            x2.y += WORLD_SIZE;
-          }
 
           const v1a = norm({
             x: x2.x - x1.x,
@@ -1318,16 +1309,11 @@ const crew = (function () {
 
         const wp = wps[me.raceIndex];
         if (wp) {
-          // NOTE: race waypoints are one of the rare exceptions that may
-          // be outside the range of [0-WORLD_SIZE), as in BRUHmuda.
-          const item = {
-            x: mod(wp.x, WORLD_SIZE),
-            y: mod(wp.y, WORLD_SIZE),
-          };
-          const { x:ix, y:iy } = item;
-          camera.inFrame(item).forEach(({x, y}) => {
+          const { x, y } = near(wp);
+          ctx.translate(x, y);
+          camera.inFrame(wp).forEach(({x, y}) => {
             ctx.save();
-            ctx.translate(ix+x, iy+y);
+            ctx.translate(x, y);
 
             ctx.beginPath();
             ctx.roundRect(-4, -4, 8, 8, 2);
