@@ -17,6 +17,8 @@ const crew = (function () {
   const ts = performance.now.bind(performance);
 
   // Physics parameters
+  // Size of world in units
+  const WORLD_SIZE = 2000; // ImageAssets.bump.width
   // Size of server tick in ms
   const TICKSIZE = 33;
   // Speed limit on either axis in units/tick
@@ -276,8 +278,8 @@ const crew = (function () {
           }
         }
 
-        predicted.x = mod(predicted.x, 2000);
-        predicted.y = mod(predicted.y, 2000);
+        predicted.x = mod(predicted.x, WORLD_SIZE);
+        predicted.y = mod(predicted.y, WORLD_SIZE);
         return predicted;
       },
 
@@ -369,21 +371,21 @@ const crew = (function () {
         p0 = soothsayer.predict(p0, latency, ticks);
 
         // Blend with previous snapshot
-        if (p1.x - p0.x > 1000) {
-          p1.x -= 2000;
-        } else if (p1.x - p0.x < -1000) {
-          p1.x += 2000;
+        if (p1.x - p0.x > WORLD_SIZE/2) {
+          p1.x -= WORLD_SIZE;
+        } else if (p1.x - p0.x < -WORLD_SIZE/2) {
+          p1.x += WORLD_SIZE;
         }
 
-        if (p1.y - p0.y > 1000) {
-          p1.y -= 2000;
-        } else if (p1.x - p0.x < -1000) {
-          p1.y += 2000;
+        if (p1.y - p0.y > WORLD_SIZE/2) {
+          p1.y -= WORLD_SIZE;
+        } else if (p1.x - p0.x < -WORLD_SIZE/2) {
+          p1.y += WORLD_SIZE;
         }
 
         me.corrected = {
-          x: mod(a*p0.x + (1-a)*p1.x, 2000),
-          y: mod(a*p0.y + (1-a)*p1.y, 2000),
+          x: mod(a*p0.x + (1-a)*p1.x, WORLD_SIZE),
+          y: mod(a*p0.y + (1-a)*p1.y, WORLD_SIZE),
           vx: a*p0.vx + (1-a)*p1.vx,
           vy: a*p0.vy + (1-a)*p1.vy,
           when: now,
@@ -596,9 +598,9 @@ const crew = (function () {
       get y() { return this.cy ?? this.ty; },
       get z() { return this.cz ?? this.tz; },
 
-      // Wrap x and y within [0, 2000)
-      set x(value) { this.tx = mod(value, 2000); },
-      set y(value) { this.ty = mod(value, 2000); },
+      // Wrap x and y within [0, WORLD_SIZE)
+      set x(value) { this.tx = mod(value, WORLD_SIZE); },
+      set y(value) { this.ty = mod(value, WORLD_SIZE); },
       // Clamp z within reasonable range (2x zoom to 1/4x zoom)
       set z(value) { this.tz = Math.max(-1000, Math.min(2000, value)); },
 
@@ -635,19 +637,19 @@ const crew = (function () {
         const a = 1 - Math.exp(-dt/this.t);
 
         let { x:cx, y:cy, z:cz, tx, ty, tz } = this;
-        if (tx - cx > 1000) {
-          tx -= 2000;
-        } else if (tx - cx < -1000) {
-          tx += 2000;
+        if (tx - cx > WORLD_SIZE/2) {
+          tx -= WORLD_SIZE;
+        } else if (tx - cx < -WORLD_SIZE/2) {
+          tx += WORLD_SIZE;
         }
-        if (ty - cy > 1000) {
-          ty -= 2000;
-        } else if (ty - cy < -1000) {
-          ty += 2000;
+        if (ty - cy > WORLD_SIZE/2) {
+          ty -= WORLD_SIZE;
+        } else if (ty - cy < -WORLD_SIZE/2) {
+          ty += WORLD_SIZE;
         }
 
-        this.cx = mod(a*tx + (1-a)*cx, 2000);
-        this.cy = mod(a*ty + (1-a)*cy, 2000);
+        this.cx = mod(a*tx + (1-a)*cx, WORLD_SIZE);
+        this.cy = mod(a*ty + (1-a)*cy, WORLD_SIZE);
         this.cz = a*tz + (1-a)*cz;
         this._boundsDirty = true;
       },
@@ -713,25 +715,25 @@ const crew = (function () {
 
         if (b[0].x0 < 0) {
           b.push({
-            x0: b[0].x0+2000,
+            x0: b[0].x0+WORLD_SIZE,
             y0: b[0].y0,
-            x1: 2000,
+            x1: WORLD_SIZE,
             y1: b[0].y1,
-            xo: -2000,
+            xo: -WORLD_SIZE,
             yo: 0,
           });
           b[0].x0 = 0;
         }
-        if (b[0].x1 > 2000) {
+        if (b[0].x1 > WORLD_SIZE) {
           b.push({
             x0: 0,
             y0: b[0].y0,
-            x1: b[0].x1-2000,
+            x1: b[0].x1-WORLD_SIZE,
             y1: b[0].y1,
-            xo: 2000,
+            xo: WORLD_SIZE,
             yo: 0,
           });
-          b[0].x1 = 2000;
+          b[0].x1 = WORLD_SIZE;
         }
 
         const nx = b.length;
@@ -739,26 +741,26 @@ const crew = (function () {
           for (let i=0; i<nx; i++) {
             b.push({
               x0: b[i].x0,
-              y0: b[i].y0+2000,
+              y0: b[i].y0+WORLD_SIZE,
               x1: b[i].x1,
-              y1: 2000,
+              y1: WORLD_SIZE,
               xo: b[i].xo,
-              yo: -2000,
+              yo: -WORLD_SIZE,
             });
             b[i].y0 = 0;
           }
         }
-        if (b[0].y1 > 2000) {
+        if (b[0].y1 > WORLD_SIZE) {
           for (let i=0; i<nx; i++) {
             b.push({
               x0: b[i].x0,
               y0: 0,
               x1: b[i].x1,
-              y1: b[i].y1-2000,
+              y1: b[i].y1-WORLD_SIZE,
               xo: b[i].xo,
-              yo: 2000,
+              yo: WORLD_SIZE,
             });
-            b[i].y1 = 2000;
+            b[i].y1 = WORLD_SIZE;
           }
         }
 
@@ -856,7 +858,7 @@ const crew = (function () {
           const bounds = camera.bounds;
           bounds.forEach(({xo:x,yo:y}) => {
             for (const img of imgs) {
-              ctx.drawImage(img, 0, 0, img.width, img.height, x, y, 2000, 2000);
+              ctx.drawImage(img, 0, 0, img.width, img.height, x, y, WORLD_SIZE, WORLD_SIZE);
             }
           });
           _bounds = bounds;
@@ -1095,16 +1097,16 @@ const crew = (function () {
         x1 = start;
         x2 = wps[offset];
 
-        if (x2.x - x1.x > 1000) {
-          x2.x -= 2000;
-        } else if (x2.x - x1.x < -1000) {
-          x2.x += 2000;
+        if (x2.x - x1.x > WORLD_SIZE/2) {
+          x2.x -= WORLD_SIZE;
+        } else if (x2.x - x1.x < -WORLD_SIZE/2) {
+          x2.x += WORLD_SIZE;
         }
 
-        if (x2.y - x1.y > 1000) {
-          x2.y -= 2000;
-        } else if (x2.x - x1.x < -1000) {
-          x2.y += 2000;
+        if (x2.y - x1.y > WORLD_SIZE/2) {
+          x2.y -= WORLD_SIZE;
+        } else if (x2.x - x1.x < -WORLD_SIZE/2) {
+          x2.y += WORLD_SIZE;
         }
 
         v1 = norm({
@@ -1118,16 +1120,16 @@ const crew = (function () {
           x2 = wps[i+offset+1] ?? { x: 2*x1.x-x0.x, y: 2*x1.y-x0.y };
           v0 = v1;
 
-          if (x2.x - x1.x > 1000) {
-            x2.x -= 2000;
-          } else if (x2.x - x1.x < -1000) {
-            x2.x += 2000;
+          if (x2.x - x1.x > WORLD_SIZE/2) {
+            x2.x -= WORLD_SIZE;
+          } else if (x2.x - x1.x < -WORLD_SIZE/2) {
+            x2.x += WORLD_SIZE;
           }
 
-          if (x2.y - x1.y > 1000) {
-            x2.y -= 2000;
-          } else if (x2.x - x1.x < -1000) {
-            x2.y += 2000;
+          if (x2.y - x1.y > WORLD_SIZE/2) {
+            x2.y -= WORLD_SIZE;
+          } else if (x2.x - x1.x < -WORLD_SIZE/2) {
+            x2.y += WORLD_SIZE;
           }
 
           const v1a = norm({
@@ -1314,10 +1316,10 @@ const crew = (function () {
         const wp = wps[me.raceIndex];
         if (wp) {
           // NOTE: race waypoints are one of the rare exceptions that may
-          // be outside the range of 0-2000, as in BRUHmuda.
+          // be outside the range of [0-WORLD_SIZE), as in BRUHmuda.
           const item = {
-            x: mod(wp.x, 2000),
-            y: mod(wp.y, 2000),
+            x: mod(wp.x, WORLD_SIZE),
+            y: mod(wp.y, WORLD_SIZE),
           };
           const { x:ix, y:iy } = item;
           camera.inFrame(item).forEach(({x, y}) => {
@@ -1357,7 +1359,7 @@ const crew = (function () {
       ctx.resetTransform();
       ctx.translate(0, canvas.height - ImageAssets.minimap.height);
       ctx.drawImage(ImageAssets.minimap, 0, 0);
-      const minimapScale = ImageAssets.minimap.width / 2000;
+      const minimapScale = ImageAssets.minimap.width / WORLD_SIZE;
       ctx.scale(minimapScale, minimapScale);
 
       ctx.fillStyle = 'rgba(255, 0, 0, 1)';
