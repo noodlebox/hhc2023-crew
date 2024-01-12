@@ -1,5 +1,5 @@
 # hhc2023-crew
-A collection of scripts written for the 2023 SANS Holiday Hack Challenge.
+A collection of scripts written for the [2023 SANS Holiday Hack Challenge](https://2023.holidayhackchallenge.com/).
 
 ## Autofisher ([fish.js](fish.js))
 This is a snippet of code for an autofisher. Simply paste into the console, then hit "Cast Line".
