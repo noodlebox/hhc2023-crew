@@ -53,6 +53,9 @@ const crew = (function () {
   // Modulo (remainder with same sign as b)
   const mod = (a, b) => (((a % b) + b) % b);
 
+  // Clamp n within the range of [lower, upper]
+  const clamp = (n, lower, upper) => Math.min(Math.max(lower, n), upper);
+
   // Given two point-like objects, a and b, the distance between them.
   // NOTE: Thrust axes are independent, so we use Chebyshev distance.
   const dist = (a, b) => {
@@ -602,7 +605,7 @@ const crew = (function () {
       set x(value) { this.tx = mod(value, WORLD_SIZE); },
       set y(value) { this.ty = mod(value, WORLD_SIZE); },
       // Clamp z within reasonable range (2x zoom to 1/4x zoom)
-      set z(value) { this.tz = Math.max(-1000, Math.min(2000, value)); },
+      set z(value) { this.tz = clamp(value, -1000, 2000); },
 
       pan(dx, dy) {
         this.x = this.tx + dx;
