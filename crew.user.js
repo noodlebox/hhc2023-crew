@@ -852,7 +852,8 @@ const crew = (function () {
 
     const landCache = (function () {
       let _gutter = CANVAS_GUTTER;
-      const _canvas = new OffscreenCanvas( // jshint ignore:line
+      /* globals OffscreenCanvas */
+      const _canvas = new OffscreenCanvas(
         window.innerWidth + 2*_gutter,
         window.innerHeight + 2*_gutter,
       );
@@ -1029,7 +1030,8 @@ const crew = (function () {
       ctx.drawImage(ImageAssets[e.image], -e.offset.x, -e.offset.y);
     };
 
-    const shipCanvas = new OffscreenCanvas(81, 77); // jshint ignore:line
+    /* globals OffscreenCanvas */
+    const shipCanvas = new OffscreenCanvas(81, 77);
     const shipCtx = shipCanvas.getContext('2d');
     shipCtx.imageSmoothingEnabled = false;
     const shipCache = {};
