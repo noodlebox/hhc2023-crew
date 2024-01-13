@@ -292,9 +292,18 @@ const crew = (function () {
 
           // Integrate acceleration
           if (input & Keys.ANCHOR) {
-            // Anchor overrides all input for large linear drag
+            // Anchor overrides all input except for drag
             predicted.vx *= 1 - DRAG_ANCHOR;
             predicted.vy *= 1 - DRAG_ANCHOR;
+            if ((input & (Keys.LEFT | Keys.RIGHT)) === 0) {
+              // Also idle on x-axis, apply linear drag
+              predicted.vx *= 1 - DRAG_IDLE;
+            }
+            if ((input & (Keys.UP | Keys.DOWN)) === 0) {
+              // Also idle on y-axis, apply linear drag
+              predicted.vy *= 1 - DRAG_IDLE;
+            }
+
           } else {
             // VX
             switch (input & (Keys.LEFT | Keys.RIGHT)) {
