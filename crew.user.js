@@ -209,9 +209,24 @@ const crew = (function () {
 
   // Provides predictions by replaying recorded input over snapshots
   const soothsayer = (function () {
+
     let _active = false;
 
     const _inputs = [];
+
+    const _density = (function () {
+      /* globals ImageAssets, OffscreenCanvas */
+      const ctx = new OffscreenCanvas(WORLD_SIZE, WORLD_SIZE).getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(ImageAssets.blocks, 0, 0);
+      const data = ctx.getImageData(0, 0, WORLD_SIZE, WORLD_SIZE).data;
+      const alpha = new Uint8ClampedArray(data.length/4);
+      for (let i=0; i<alpha.length; i++) {
+        alpha[i] = data[i*4+3];
+      }
+      return ({x, y}) => alpha[Math.floor(x)+Math.floor(y)*WORLD_SIZE]/255;
+      //return ({x, y}) => data[(Math.floor(x)+Math.floor(y)*WORLD_SIZE)*4+3]/255;
+    })();
 
     return {
       get active() { return _active; },
@@ -259,8 +274,21 @@ const crew = (function () {
           }
 
           // Integrate velocity
-          predicted.x += predicted.vx;
-          predicted.y += predicted.vy;
+          const next = {
+            x: predicted.x + predicted.vx,
+            y: predicted.y + predicted.vy,
+          };
+
+          const d = _density(next);
+          if (d >= 0.9) {
+            // If we would end up inside solid terrain, stop
+            predicted.vx = 0;
+            predicted.vy = 0;
+            continue;
+          }
+
+          predicted.x = next.x;
+          predicted.y = next.y;
 
           // Integrate acceleration
           if (input & Keys.ANCHOR) {
@@ -275,15 +303,9 @@ const crew = (function () {
                 break;
               case Keys.LEFT:
                 predicted.vx -= ACCEL;
-                if (predicted.vx < -MAX_SPEED) {
-                  predicted.vx = -MAX_SPEED;
-                }
                 break;
               case Keys.RIGHT:
                 predicted.vx += ACCEL;
-                if (predicted.vx > MAX_SPEED) {
-                  predicted.vx = MAX_SPEED;
-                }
                 break;
               case 0:
                 // Idle on x-axis, apply linear drag
@@ -298,15 +320,9 @@ const crew = (function () {
                 break;
               case Keys.UP:
                 predicted.vy -= ACCEL;
-                if (predicted.vy < -MAX_SPEED) {
-                  predicted.vy = -MAX_SPEED;
-                }
                 break;
               case Keys.DOWN:
                 predicted.vy += ACCEL;
-                if (predicted.vy > MAX_SPEED) {
-                  predicted.vy = MAX_SPEED;
-                }
                 break;
               case 0:
                 // Idle on y-axis, apply linear drag
@@ -314,6 +330,11 @@ const crew = (function () {
                 break;
             }
           }
+
+          // Clamp velocity based on density
+          const s = MAX_SPEED*(1-d);
+          predicted.vx = clamp(predicted.vx, -s, s);
+          predicted.vy = clamp(predicted.vy, -s, s);
         }
 
         return canonicalize(predicted);
