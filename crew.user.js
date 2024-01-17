@@ -274,10 +274,10 @@ const crew = (function () {
           }
 
           // Integrate velocity
-          const next = {
+          const next = canonicalize({
             x: predicted.x + predicted.vx,
             y: predicted.y + predicted.vy,
-          };
+          });
 
           const d = _density(next);
           if (d >= 0.9) {
