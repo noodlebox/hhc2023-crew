@@ -501,7 +501,7 @@ const crew = (function () {
   //   Mouse click sailing replaced with Sail To on click (TODO)
   //   Show split times during races (TODO)
   const captain = (function () {
-    /* globals handleKey, handleCanvasCursor, handleMouseToggle, BuoyRenderBuffer, ImageAssets, img */
+    /* globals handleKey, handleCanvasCursor, handleMouseToggle, BuoyRenderBuffer, ImageAssets */
     let _active = false;
 
     const portLabel = document.querySelector('.port-label');
@@ -870,149 +870,319 @@ const crew = (function () {
       },
     };
 
-    const insideBounds = (bOut, bIn, g=0) => {
-      if (!bOut) { return false; }
-      if (!bIn) { return true; }
-      return bIn.every(b1 =>
-        bOut.some(b0 =>
-          (b1.x0+g >= b0.x0 && b1.y0+g >= b0.y0 && b1.x1-g <= b0.x1 && b1.y1-g <= b0.y1)
-        )
-      );
-    };
+    /* Adapted from: https://github.com/dy/bitmap-sdf */
+    const calcSDF = (function () {
+      const INF = 1e20;
 
-    const landCache = (function () {
-      let _gutter = CANVAS_GUTTER;
-      /* globals OffscreenCanvas */
-      const _canvas = new OffscreenCanvas(
-        window.innerWidth + 2*_gutter,
-        window.innerHeight + 2*_gutter,
-      );
+      function calcSDF(src, options) {
+        if (!options) options = {};
 
-      const _ctx = _canvas.getContext('2d');
+        let cutoff = options.cutoff ?? 0.25;
+        let radius = options.radius ?? 8;
+        let channel = options.channel ?? 0;
+        let w, h, size, data, intData, stride, ctx, canvas, imgData, i, l;
 
-      let _bounds, _camera, _image;
-      let _nextImage = new Promise(r=>r());
-      let _rendering = false;
+        // handle image container
+        if (ArrayBuffer.isView(src) || Array.isArray(src)) {
+          if (!options.width || !options.height) {
+            throw Error('For raw data width and height should be provided by options');
+          }
+          ({ width:w, height:h } = options);
+          data = src;
 
-      let _complete = true;
-      let _images = Promise.all([]);
+          stride = options.stride ?? Math.floor(src.length / w / h);
+        }
+        else {
+          if (src instanceof HTMLCanvasElement) {
+            canvas = src;
+            ctx = canvas.getContext('2d');
+            ({ width:w, height:h } = canvas);
+            imgData = ctx.getImageData(0, 0, w, h);
+            data = imgData.data;
+            stride = 4;
+          }
+          else if (src instanceof CanvasRenderingContext2D) {
+            canvas = src.canvas;
+            ctx = src;
+            ({ width:w, height:h } = canvas);
+            imgData = ctx.getImageData(0, 0, w, h);
+            data = imgData.data;
+            stride = 4;
+          }
+          /* globals ImageData */
+          else if (src instanceof ImageData) {
+            imgData = src;
+            ({ width:w, height:h } = src);
+            data = imgData.data;
+            stride = 4;
+          }
+        }
 
-      const redraw = () => {
-        _rendering = true;
-        _nextImage = _images.then(imgs => {
-          const ctx = _ctx;
-          ctx.resetTransform();
-          ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-          camera.transform(ctx);
-          const bounds = camera.bounds;
-          bounds.forEach(({xo:x,yo:y}) => {
-            for (const img of imgs) {
-              ctx.drawImage(img, 0, 0, img.width, img.height, x, y, WORLD_SIZE, WORLD_SIZE);
-            }
-          });
-          _bounds = bounds;
-          _camera = { x: camera.x, y: camera.y, zf: camera.zoomFactor };
+        size = Math.max(w, h);
 
-          return ctx.canvas.transferToImageBitmap();
-        });
-        _nextImage.then(image => {
-          if (_image) { _image.close(); }
-          _image = image;
-          _rendering = false;
-        });
-        return _nextImage;
+        //convert int data to floats
+        if ((data instanceof Uint8ClampedArray) || (data instanceof Uint8Array)) {
+          intData = data;
+          data = Array(w*h);
+
+          for (i = 0, l = Math.floor(intData.length / stride); i < l; i++) {
+            data[i] = intData[i*stride + channel] / 255;
+          }
+        }
+        else if (stride !== 1) {
+          throw Error('Raw data can have only 1 value per pixel');
+        }
+
+        // temporary arrays for the distance transform
+        const gridOuter = Array(w * h);
+        const gridInner = Array(w * h);
+        const f = Array(size);
+        const d = Array(size);
+        const z = Array(size + 1);
+        const v = Array(size);
+
+        for (i = 0, l = w * h; i < l; i++) {
+          const a = data[i];
+          gridOuter[i] = a === 1 ? 0 : a === 0 ? INF : Math.pow(Math.max(0, 0.5 - a), 2);
+          gridInner[i] = a === 1 ? INF : a === 0 ? 0 : Math.pow(Math.max(0, a - 0.5), 2);
+        }
+
+        edt(gridOuter, w, h, f, d, v, z);
+        edt(gridInner, w, h, f, d, v, z);
+
+        const dist = new Uint8Array(w * h);
+
+        for (i = 0, l = w*h; i < l; i++) {
+          dist[i] = 255 * clamp(1 - ((gridOuter[i] - gridInner[i])/radius + cutoff), 0, 1);
+        }
+
+        return dist;
+      }
+
+      // 2D Euclidean distance transform by Felzenszwalb & Huttenlocher https://cs.brown.edu/~pff/dt/
+      function edt(data, width, height, f, d, v, z) {
+        for (let x = 0; x < width; x++) {
+          for (let y = 0; y < height; y++) {
+            f[y] = data[y * width + x];
+          }
+          edt1d(f, d, v, z, height);
+          for (let y = 0; y < height; y++) {
+            data[y * width + x] = d[y];
+          }
+        }
+        for (let y = 0; y < height; y++) {
+          for (let x = 0; x < width; x++) {
+            f[x] = data[y * width + x];
+          }
+          edt1d(f, d, v, z, width);
+          for (let x = 0; x < width; x++) {
+            data[y * width + x] = Math.sqrt(d[x]);
+          }
+        }
+      }
+
+      // 1D squared distance transform
+      function edt1d(f, d, v, z, n) {
+        v[0] = 0;
+        z[0] = -INF;
+        z[1] = +INF;
+
+        for (let q = 1, k = 0; q < n; q++) {
+          let s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+          while (s <= z[k]) {
+            k--;
+            s = ((f[q] + q * q) - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
+          }
+          k++;
+          v[k] = q;
+          z[k] = s;
+          z[k + 1] = +INF;
+        }
+
+        for (let q = 0, k = 0; q < n; q++) {
+          while (z[k + 1] < q) k++;
+          d[q] = (q - v[k]) * (q - v[k]) + f[v[k]];
+        }
+      }
+
+      return calcSDF;
+    })();
+
+    const background = (function () {
+      const canvas = document.createElement('canvas');
+      document.body.insertBefore(canvas, document.querySelector('canvas'));
+      const gl = canvas.getContext('webgl');
+
+      // Black
+      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+
+      // Vertex shader program
+      const vsSource = `
+      attribute vec2 aPosCoord;
+
+      void main(void) {
+        gl_Position = vec4(aPosCoord.xy, 0.0, 1.0);
+      }
+      `;
+
+      // Fragment shader program
+      const fsSource = `
+      uniform highp vec3 uCamera;
+      uniform highp vec2 uCanvasSize;
+      uniform sampler2D uSampler;
+
+      mediump vec3 land(mediump vec2 p, mediump float a) {
+        const mediump vec3 c0 = vec3(0.80, 0.80, 0.5);
+        const mediump vec3 c1 = vec3(0.60, 0.60, 0.3);
+        return mix(c0, c1, clamp(a, 0.0, 1.0));
+      }
+
+      mediump vec3 sea(mediump vec2 p) {
+        const mediump vec3 c0 = vec3(0.353, 0.612, 0.863);
+        const mediump vec3 c1 = vec3(0.043, 0.322, 0.537);
+        const mediump vec3 c2 = vec3(0.012, 0.086, 0.141);
+        mediump float a = 4.0*length(p-0.5*uCanvasSize)/uCanvasSize.x;
+        if (a < 1.0) {
+          return mix(c0, c1, a);
+        } else {
+          return mix(c1, c2, a-1.0);
+        }
+      }
+
+      void main(void) {
+        highp vec2 texCoord = mod((uCamera.xy + (gl_FragCoord.xy - 0.5*uCanvasSize)/uCamera.z)/2000.0, 1.0);
+        mediump float a = texture2D(uSampler, texCoord).a;
+        const mediump float w = 0.01;
+        mediump float a0 = smoothstep(0.7-w, 0.7+w, a);
+        mediump float a1 = smoothstep(0.8-w, 0.8+w, a);
+        gl_FragColor = vec4(mix(sea(gl_FragCoord.xy), land(gl_FragCoord.xy, a0-a1), a0), 1.0);
+      }
+      `;
+
+      // Set up shaders
+      const vs = gl.createShader(gl.VERTEX_SHADER);
+      gl.shaderSource(vs, vsSource);
+      gl.compileShader(vs);
+      const fs = gl.createShader(gl.FRAGMENT_SHADER);
+      gl.shaderSource(fs, fsSource);
+      gl.compileShader(fs);
+      const prog = gl.createProgram();
+      gl.attachShader(prog, vs);
+      gl.attachShader(prog, fs);
+      gl.linkProgram(prog);
+
+      if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+        console.error(`Link failed: ${gl.getProgramInfoLog(prog)}`); // jshint ignore:line
+        console.error(`vs info-log: ${gl.getShaderInfoLog(vs)}`); // jshint ignore:line
+        console.error(`fs info-log: ${gl.getShaderInfoLog(fs)}`); // jshint ignore:line
+      }
+
+      // Collect all the info needed to use the shader program.
+      // Look up which attributes our shader program is using
+      // for aVertexPosition, aVertexColor and also
+      // look up uniform locations.
+      const programInfo = {
+        program: prog,
+        attribLocations: {
+          posCoord: gl.getAttribLocation(prog, "aPosCoord"),
+        },
+        uniformLocations: {
+          camera: gl.getUniformLocation(prog, "uCamera"),
+          canvasSize: gl.getUniformLocation(prog, "uCanvasSize"),
+          sampler: gl.getUniformLocation(prog, "uSampler"),
+        },
       };
 
+      // Set up buffer
+      const posCoords = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, posCoords);
+      gl.bufferData(
+        gl.ARRAY_BUFFER,
+        new Float32Array([
+          -1, -1,
+          -1, 1,
+          1, -1,
+          1, 1,
+        ]),
+        gl.STATIC_DRAW,
+      );
+
+      // Set up texture
+      const tex = gl.createTexture();
+      {
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(
+          gl.TEXTURE_2D, 0, gl.ALPHA,
+          1, 1, 0,
+          gl.ALPHA, gl.UNSIGNED_BYTE,
+          new Uint8Array([0.0]),
+        );
+        const img = new Image();
+        img.onload = () => {
+          const ctx = new OffscreenCanvas(WORLD_SIZE, WORLD_SIZE).getContext('2d');
+          ctx.drawImage(img, 0, 0);
+          const data = calcSDF(
+            ctx.getImageData(0, 0, WORLD_SIZE, WORLD_SIZE), {
+              channel: 3,
+              cutoff: 0.25,
+              radius: 8,
+            },
+          );
+
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.texImage2D(
+            gl.TEXTURE_2D, 0, gl.ALPHA,
+            WORLD_SIZE, WORLD_SIZE, 0,
+            gl.ALPHA, gl.UNSIGNED_BYTE,
+            data,
+          );
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        };
+        img.src = 'https://2023.holidayhackchallenge.com/sea/assets/island_detail.png';
+      }
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+
       return {
-        get width() { return _image?.width ?? _canvas.width; },
-        get height() { return _image?.height ?? _canvas.height; },
-        get camera() { return _camera; },
-        get rendering() { return _rendering; },
-        get complete() { return _complete; },
-
-        get gutter() { return _gutter; },
-        set gutter(g) {
-          _nextImage.then(() => {
-            _gutter = g;
-            this.handleResize();
-          });
-        },
-
-        get images() { return _images; },
-        set images(imgs) {
-          _complete = false;
-          _nextImage.then(() => {
-            _images = Promise.all(imgs.map(img => {
-              if (img.complete) { return img; }
-              return new Promise(resolve => {
-                if (img.complete) { resolve(img); return; }
-                img.onload = () => resolve(img);
-                img.onerror = () => resolve(img);
-              });
-            }));
-
-            _images.then(() => {
-              _complete = true;
-            });
-          });
-        },
-
         handleResize() {
-          _canvas.width = window.innerWidth + 2*_gutter;
-          _canvas.height = window.innerHeight + 2*_gutter;
+          canvas.width = window.innerWidth;
+          canvas.height = window.innerHeight;
+          gl.viewport(0, 0, canvas.width, canvas.height);
         },
 
-        get image() {
-          if (!_rendering) {
-            // Trigger a redraw if needed
-            const { bounds, zoomFactor:zf } = camera;
-            if (!_image || zf > _camera.zf*2 || !insideBounds(_bounds, bounds, _gutter/zf)) {
-              redraw();
-            }
-          }
-          // Just return what we have now, even if it may be stale or not yet ready
-          return _image;
-        },
+        render() {
+          gl.clearColor(0.0, 0.0, 1.0, 1.0);
+          gl.clearDepth(1.0);
+          gl.enable(gl.DEPTH_TEST);
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-        get imageAsync() {
-          if (!_rendering) {
-            // Trigger a redraw if needed
-            const { bounds, zoomFactor:zf } = camera;
-            if (!_image || zf > _camera.zf*2 || !insideBounds(_bounds, bounds, _gutter/zf)) {
-              return redraw();
-            }
+          // Set program
+          gl.useProgram(programInfo.program);
+
+          // Set buffers
+          gl.bindBuffer(gl.ARRAY_BUFFER, posCoords);
+          gl.vertexAttribPointer(programInfo.attribLocations.worldCoord, 2, gl.FLOAT, false, 0, 0);
+          gl.enableVertexAttribArray(programInfo.attribLocations.worldCoord);
+
+          // Set uniforms
+          {
+            const { x, y, zoomFactor:z } = camera;
+            gl.uniform3f(programInfo.uniformLocations.camera, x, WORLD_SIZE-y, z);
+            gl.uniform2f(programInfo.uniformLocations.canvasSize, canvas.width, canvas.height);
           }
-          return _nextImage;
+
+          // Set texture
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.uniform1i(programInfo.uniformLocations.sampler, 0);
+
+          // Draw
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
         },
       };
     })();
-
-    landCache.gutter = CANVAS_GUTTER;
-
-    landCache.images = [
-      ImageAssets.shadow,
-      ImageAssets.detail,
-      img,
-    ];
-
-    const drawLand = ctx => {
-      const image = landCache.image;
-      if (!image) { return; }
-      const { x, y, zf } = landCache.camera;
-      const { width:w, height:h } = image;
-
-      ctx.save();
-      camera.transform(ctx);
-      ctx.translate(x, y);
-      camera.inFrame(landCache.camera).forEach(({x, y}) => {
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.scale(1/zf, 1/zf);
-        ctx.drawImage(image, -w/2, -h/2);
-        ctx.restore();
-      });
-      ctx.restore();
-    };
 
     const getShipAngle = e => {
       return Math.sin(e.clockOffset + 3*Clock) * 2*Math.PI/180;
@@ -1199,14 +1369,9 @@ const crew = (function () {
     };
 
     const renderScene = () => {
-      /* globals bgGradient, isMaidenVoyage */
+      /* globals isMaidenVoyage */
       const dt = ts()/1000 - Clock;
       Clock += dt;
-
-      ctx.resetTransform();
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = bgGradient;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const playerId = (playerData ?? {}).uid;
       const me = Entities[playerId];
@@ -1229,9 +1394,12 @@ const crew = (function () {
 
       // Update camera and apply transform
       camera.update(dt);
-      drawLand(ctx);
+      background.render();
 
       ctx.save();
+      ctx.resetTransform();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       camera.transform();
 
       // Draw entities
@@ -1428,14 +1596,14 @@ const crew = (function () {
         [ canvas, 'wheel', camera.handleWheel.bind(camera), { passive: false } ],
         [ document, 'keydown', handleKey ],
         [ document, 'keyup', handleKey ],
-        [ window, 'resize', landCache.handleResize.bind(landCache) ],
+        [ window, 'resize', background.handleResize.bind(background) ],
       ],
       renderers: [
         { pre: followPlayer, replace: renderScene, post: renderMiniMap },
         { pre: navigator.smoothPlayerMotion.bind(navigator) },
       ],
       start() {
-        landCache.handleResize();
+        background.handleResize();
         matey.start();
         startMatey = setTimeout(() => {
           matey.interval = 300000;
@@ -1486,7 +1654,7 @@ const crew = (function () {
         [ canvas, 'wheel', camera.handleWheel.bind(camera), { passive: false } ],
         [ document, 'keydown', camera.handleKey.bind(camera) ],
         [ document, 'keydown', editor.handleKey.bind(editor) ],
-        [ window, 'resize', landCache.handleResize.bind(landCache) ],
+        [ window, 'resize', background.handleResize.bind(background) ],
       ],
       renderers: [
         { replace: renderScene, post: renderMiniMap },
@@ -1494,7 +1662,7 @@ const crew = (function () {
         { pre: navigator.smoothPlayerMotion.bind(navigator) },
       ],
       start() {
-        landCache.handleResize();
+        background.handleResize();
         camera.tmax *= 0.2;
       },
       stop() {
