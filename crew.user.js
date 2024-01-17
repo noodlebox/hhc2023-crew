@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        Captain and Crew (Holiday Hack Challenge 2023)
 // @namespace   https://files.noodlebox.moe/
-// @version     1.3
+// @version     1.4
 // @description Various features and QoL fixes for the sailing mode of Holiday Hack Challenge 2023.
 // @author      noodlebox
 // @match       https://2023.holidayhackchallenge.com/sea/*
