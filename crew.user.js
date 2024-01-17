@@ -1035,8 +1035,8 @@ const crew = (function () {
       uniform sampler2D uSampler;
 
       vec3 land(vec2 p, float a) {
-        const vec3 c0 = vec3(0.60, 0.60, 0.3);
-        const vec3 c1 = vec3(0.80, 0.80, 0.5);
+        const vec3 c0 = vec3(0.329, 0.329, 0.282);
+        const vec3 c1 = vec3(0.780, 0.761, 0.663);
         return mix(c0, c1, clamp(a, 0.0, 1.0));
       }
 
@@ -1044,7 +1044,8 @@ const crew = (function () {
         const vec3 c0 = vec3(0.353, 0.612, 0.863);
         const vec3 c1 = vec3(0.043, 0.322, 0.537);
         const vec3 c2 = vec3(0.012, 0.086, 0.141);
-        float r = 4.0*length(p-0.5*uCanvasSize)/uCanvasSize.x + 0.25*a;
+        float rMax = length(uCanvasSize.xy)*0.5;
+        float r = 2.0*length(p-0.5*uCanvasSize)/rMax + 0.25*a;
         if (r < 1.0) {
           return mix(c0, c1, r);
         } else {
@@ -1055,8 +1056,8 @@ const crew = (function () {
       void main(void) {
         vec2 texCoord = mod((uCamera.xy + (gl_FragCoord.xy - 0.5*uCanvasSize)/uCamera.z)/2000.0, 1.0);
         float a = texture2D(uSampler, texCoord).a;
-        vec3 sea = sea(gl_FragCoord.xy, smoothstep(0.0, 0.7, a));
-        vec3 land = land(gl_FragCoord.xy, smoothstep(0.7, 0.8, a));
+        vec3 sea = sea(gl_FragCoord.xy, smoothstep(0.35, 0.7, a));
+        vec3 land = land(gl_FragCoord.xy, smoothstep(0.7, 0.85, a));
         const float w = 0.01;
         gl_FragColor = vec4(mix(sea, land, smoothstep(0.7-w, 0.7+w, a)), 1.0);
       }
