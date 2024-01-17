@@ -44,17 +44,17 @@ const crew = (function () {
   // Ensures that the position of `p` is within [0, WORLD_SIZE), or within
   // WORLD_SIZE/2 units of `ref` if given.
   const canonicalize = (p, ref={ x: WORLD_SIZE/2, y: WORLD_SIZE/2 }) => {
-    while (p.x - ref.x > WORLD_SIZE/2) {
+    while (p.x - ref.x >= WORLD_SIZE/2) {
       p.x -= WORLD_SIZE;
     }
     while (p.x - ref.x < -WORLD_SIZE/2) {
       p.x += WORLD_SIZE;
     }
 
-    while (p.y - ref.y > WORLD_SIZE/2) {
+    while (p.y - ref.y >= WORLD_SIZE/2) {
       p.y -= WORLD_SIZE;
     }
-    while (p.x - ref.x < -WORLD_SIZE/2) {
+    while (p.y - ref.y < -WORLD_SIZE/2) {
       p.y += WORLD_SIZE;
     }
     return p;
