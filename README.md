@@ -9,7 +9,7 @@ This is a userscript adding various features and QoL fixes to the sailing mode o
 
 ### Improved rendering performance (about 3-4x on my machine)
 - Ship images are cached
-- Redraws nearby terrain only when moving or zooming
+- Uses webgl to draw terrain instead of SVG ![image](https://github.com/noodlebox/hhc2023-crew/assets/308464/53bdd11d-17b1-4c93-bd10-c135786689f0)
 
 ### Smoother ship handling
 - Adds client-side prediction to compensate for network latency
