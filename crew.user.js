@@ -1479,7 +1479,7 @@ const crew = (function () {
             ctx.translate(ix+x, iy+y);
 
             ctx.beginPath();
-            ctx.roundRect(-4, -4, 8, 8, 2);
+            ctx.arc(0, 0, 4, 0, 2*Math.PI);
             ctx.stroke();
 
             ctx.scale(1/WORLD_SCALE, 1/WORLD_SCALE);
@@ -1515,7 +1515,7 @@ const crew = (function () {
             ctx.translate(x, y);
 
             ctx.beginPath();
-            ctx.roundRect(-4, -4, 8, 8, 2);
+            ctx.arc(0, 0, 4, 0, 2*Math.PI);
             ctx.stroke();
 
             if (me.raceIndex === wps.length-1) {
